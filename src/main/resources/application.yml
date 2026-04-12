@@ -1,0 +1,38 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: prearbbot
+  datasource:
+    # ИЗМЕНЕНО: имя БД
+    url: jdbc:postgresql://localhost:5432/prearbbot
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  jooq:
+    sql-dialect: postgresql
+
+arbitrage:
+  dry-run: true
+  trading:
+    bet-amount: 10.0
+    min-profit-percent: 3.0
+    max-open-positions: 5
+  matcher:
+    confidence-threshold: 0.85
+    cache-embeddings: true
+  platforms:
+    - id: polymarket
+      enabled: true
+      api-url: https://gamma-api.polymarket.com
+    - id: kalshi
+      enabled: true
+      api-url: https://api.kalshi.com
+
+logging:
+  level:
+    # ИЗМЕНЕНО: пакет логирования
+    com.prearbbot: DEBUG
+    org.jooq: INFO
+    org.springframework.web.reactive: INFO
