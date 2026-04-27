@@ -4,6 +4,8 @@ server:
 spring:
   main:
     allow-circular-references: false
+  codec:
+    max-in-memory-size: 10MB
   application:
     name: prearbbot
   datasource:
