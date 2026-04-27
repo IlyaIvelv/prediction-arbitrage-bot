@@ -11,7 +11,6 @@
         <relativePath/>
     </parent>
 
-    <!-- ИЗМЕНЕНО -->
     <groupId>com.prearbbot</groupId>
     <artifactId>prediction-arbitrage-bot</artifactId>
     <version>0.0.1-SNAPSHOT</version>
@@ -24,11 +23,27 @@
         <langchain4j.version>1.0.0-beta7</langchain4j.version>
     </properties>
 
+    <!-- ============================================ -->
+    <!--              ЗАВИСИМОСТИ                     -->
+    <!-- ============================================ -->
     <dependencies>
+
+        <!-- ========== Spring Boot Core ========== -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- ========== Database: PostgreSQL + jOOQ + Flyway ========== -->
         <dependency>
             <groupId>org.jooq</groupId>
             <artifactId>jooq</artifactId>
@@ -39,13 +54,37 @@
             <scope>runtime</scope>
         </dependency>
         <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
+        <!-- ========== Telegram Bot ========== -->
+        <dependency>
+            <groupId>com.github.pengrad</groupId>
+            <artifactId>java-telegram-bot-api</artifactId>
+            <version>7.4.0</version>
+        </dependency>
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>javax.annotation-api</artifactId>
+            <version>1.3.2</version>
+        </dependency>
+
+        <!-- ========== Utilities & Dev Tools ========== -->
+        <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
         </dependency>
+
+        <!-- ========== Test Containers (интеграционные тесты) ========== -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -53,53 +92,69 @@
             <artifactId>reactor-test</artifactId>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>test</scope>
-        </dependency>
+
     </dependencies>
 
+    <!-- ============================================ -->
+    <!--              СБОРКА (BUILD)                  -->
+    <!-- ============================================ -->
     <build>
         <plugins>
+
+            <!-- Spring Boot Maven Plugin (упаковка в JAR) -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-            <plugin>
-                <groupId>org.jooq</groupId>
-                <artifactId>jooq-codegen-maven</artifactId>
-                <version>${jooq.version}</version>
-                <executions>
-                    <execution>
-                        <id>jooq-codegen</id>
-                        <phase>generate-sources</phase>
-                        <goals><goal>generate</goal></goals>
-                    </execution>
-                </executions>
                 <configuration>
-                    <jdbc>
-                        <driver>org.postgresql.Driver</driver>
-                        <!-- ИЗМЕНЕНО: имя БД -->
-                        <url>jdbc:postgresql://localhost:5432/prearbbot</url>
-                        <user>postgres</user>
-                        <password>postgres</password>
-                    </jdbc>
-                    <generator>
-                        <name>org.jooq.codegen.DefaultGenerator</name>
-                        <database>
-                            <name>org.jooq.meta.postgres.PostgresDatabase</name>
-                            <includes>.*</includes>
-                            <inputSchema>public</inputSchema>
-                        </database>
-                        <target>
-                            <!-- ИЗМЕНЕНО: пакет генерации -->
-                            <packageName>com.prearbbot.generated</packageName>
-                            <directory>target/generated-sources/jooq</directory>
-                        </target>
-                    </generator>
+                    <excludes>
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
                 </configuration>
             </plugin>
+
+            <!-- jOOQ Codegen (генерация классов из БД) -->
+<!--            <plugin>-->
+<!--                <groupId>org.jooq</groupId>-->
+<!--                <artifactId>jooq-codegen-maven</artifactId>-->
+<!--                <version>${jooq.version}</version>-->
+<!--                <executions>-->
+<!--                    <execution>-->
+<!--                        <id>jooq-codegen</id>-->
+<!--                        <phase>generate-sources</phase>-->
+<!--                        <goals>-->
+<!--                            <goal>generate</goal>-->
+<!--                        </goals>-->
+<!--                    </execution>-->
+<!--                </executions>-->
+<!--                <configuration>-->
+<!--                    <jdbc>-->
+<!--                        <driver>org.postgresql.Driver</driver>-->
+<!--                        <url>jdbc:postgresql://localhost:5432/prearbbot</url>-->
+<!--                        <user>postgres</user>-->
+<!--                        <password>postgres</password>-->
+<!--                    </jdbc>-->
+<!--                    <generator>-->
+<!--                        <name>org.jooq.codegen.DefaultGenerator</name>-->
+<!--                        <database>-->
+<!--                            <name>org.jooq.meta.postgres.PostgresDatabase</name>-->
+<!--                            <includes>.*</includes>-->
+<!--                            &lt;!&ndash; Исключаем только таблицу с багом внешних ключей &ndash;&gt;-->
+<!--                            <excludes>arbitrage_pairs</excludes>-->
+<!--                            <inputSchema>public</inputSchema>-->
+<!--                        </database>-->
+<!--                        <target>-->
+<!--                            <packageName>com.prearbbot.generated</packageName>-->
+<!--                            <directory>target/generated-sources/jooq</directory>-->
+<!--                        </target>-->
+<!--                        &lt;!&ndash; ОТКЛЮЧАЕМ генерацию метаданных внешних ключей (баг PostgreSQL 15 + jOOQ 3.19.8) &ndash;&gt;-->
+<!--                        <outputForeignKeys>false</outputForeignKeys>-->
+<!--                    </generator>-->
+<!--                </configuration>-->
+<!--            </plugin>-->
+
         </plugins>
     </build>
 </project>

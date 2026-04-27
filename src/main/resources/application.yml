@@ -10,7 +10,7 @@ spring:
     password: postgres
     driver-class-name: org.postgresql.Driver
   jooq:
-    sql-dialect: postgresql
+    sql-dialect: POSTGRES
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -42,10 +42,9 @@ arbitrage:
       api-secret: ${KALSHI_SECRET:}
 
 telegram:
-  token: ${TG_BOT_TOKEN}
+  token: "8316567174:AAGIdzsdb-LyNAF0MLsoC-zOLnS4sRlljAY"
   chat-ids:
-    - ${TG_CHAT_ID_1}
-    - ${TG_CHAT_ID_2}
+    - 241286252
   auto-confirm-enabled: false
   confirmation-timeout-sec: 30
 
