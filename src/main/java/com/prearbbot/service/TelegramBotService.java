@@ -4,13 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.prearbbot.config.TelegramProperties;
 import com.prearbbot.core.model.ArbitrageSignal;
-import com.prearbbot.core.scanner.ArbitrageEngine;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import jakarta.annotation.PostConstruct;
-import java.util.List;
 
 @Slf4j
 @Service
@@ -18,11 +16,9 @@ import java.util.List;
 public class TelegramBotService {
 
     private final TelegramProperties properties;
-    private final ArbitrageEngine arbitrageEngine;
+    private final ScanningStatusService statusService;
     private WebClient telegramClient;
     private ObjectMapper objectMapper = new ObjectMapper();
-
-    private volatile boolean scanningEnabled = true;
 
     @PostConstruct
     private void initWebClient() {
@@ -30,22 +26,17 @@ public class TelegramBotService {
                 .baseUrl("https://api.telegram.org/bot" + properties.getToken())
                 .build();
 
-        log.info("✅ Telegram bot initialized with direct connection");
-
-        // Запускаем поток для получения обновлений
+        log.info("✅ Telegram bot initialized");
         startUpdatesListener();
     }
 
-    // Запуск слушателя команд
     private void startUpdatesListener() {
         Thread updateThread = new Thread(() -> {
             int lastUpdateId = 0;
             while (true) {
                 try {
-                    String url = "/getUpdates?timeout=30&offset=" + (lastUpdateId + 1);
-
                     String response = telegramClient.get()
-                            .uri(url)
+                            .uri("/getUpdates?timeout=30&offset=" + (lastUpdateId + 1))
                             .retrieve()
                             .bodyToMono(String.class)
                             .block();
@@ -57,12 +48,10 @@ public class TelegramBotService {
                         if (updates != null && updates.isArray()) {
                             for (JsonNode update : updates) {
                                 lastUpdateId = update.get("update_id").asInt();
-
                                 JsonNode message = update.get("message");
                                 if (message != null) {
                                     String text = message.has("text") ? message.get("text").asText() : "";
                                     long chatId = message.get("chat").get("id").asLong();
-
                                     handleCommand(chatId, text);
                                 }
                             }
@@ -77,40 +66,42 @@ public class TelegramBotService {
         updateThread.start();
     }
 
-    // Обработка команд
     private void handleCommand(long chatId, String command) {
-        log.info("Received command: {} from chat: {}", command, chatId);
+        log.info("Command: {} from {}", command, chatId);
 
         switch (command.toLowerCase()) {
             case "/start":
-                sendMessage(chatId, "🤖 *Бот запущен!*\n\nДоступные команды:\n/start - Запустить бота\n/stop - Остановить сканирование\n/status - Проверить статус\n/scan - Запустить сканирование вручную");
+                statusService.start();
+                sendMessage(chatId, "✅ *Бот запущен!*\n\nСканирование активно.\n\nДоступные команды:\n/stop - Остановить\n/status - Статус\n/scan - Ручное сканирование");
                 break;
 
             case "/stop":
-                scanningEnabled = false;
-                sendMessage(chatId, "⏹️ *Сканирование остановлено*\n\nДля возобновления отправь /start");
+                statusService.stop();
+                sendMessage(chatId, "⏹️ *Бот остановлен*\n\nДля запуска отправь /start");
                 break;
 
             case "/status":
-                String status = scanningEnabled ? "✅ *Работает*" : "❌ *Остановлен*";
-                sendMessage(chatId, "📊 *Статус бота:*\n" + status);
+                sendMessage(chatId, "📊 *Статус:* " + statusService.getStatus());
                 break;
 
             case "/scan":
-                sendMessage(chatId, "🔍 *Запускаю внеочередное сканирование...*");
-                arbitrageEngine.scan();
-                sendMessage(chatId, "✅ *Сканирование завершено!*\nРезультаты будут в логах.");
+                if (statusService.isEnabled()) {
+                    sendMessage(chatId, "🔍 *Запускаю ручное сканирование...*");
+                    statusService.triggerManualScan();
+                    sendMessage(chatId, "✅ *Сканирование запущено!*");
+                } else {
+                    sendMessage(chatId, "⏸️ *Бот остановлен*\nСначала запусти /start");
+                }
                 break;
 
             default:
                 if (command.startsWith("/")) {
-                    sendMessage(chatId, "❌ *Неизвестная команда*\n\nДоступные команды:\n/start - Запустить\n/stop - Остановить\n/status - Статус\n/scan - Сканирование");
+                    sendMessage(chatId, "❌ *Команды:*\n/start - Запустить\n/stop - Остановить\n/status - Статус\n/scan - Ручное сканирование");
                 }
                 break;
         }
     }
 
-    // Отправка сообщения
     private void sendMessage(long chatId, String text) {
         try {
             telegramClient.post()
@@ -119,48 +110,59 @@ public class TelegramBotService {
                             .queryParam("chat_id", chatId)
                             .queryParam("text", text)
                             .queryParam("parse_mode", "Markdown")
+                            .queryParam("disable_web_page_preview", false)
                             .build())
                     .retrieve()
                     .bodyToMono(Object.class)
                     .block();
-
-            log.info("📤 Message sent to chat {}", chatId);
+            log.info("✅ Message sent to chat {}", chatId);
         } catch (Exception e) {
             log.error("❌ Failed to send message to chat {}", chatId, e);
         }
     }
 
-    // Оригинальный метод для отправки арбитражных сигналов
     public void notifyArbitrageFound(ArbitrageSignal signal) {
-        if (!scanningEnabled) {
-            log.info("Scanning disabled by user, skipping notification");
+        if (!statusService.isEnabled()) {
+            log.info("Scanning disabled, skipping notification");
             return;
         }
+
+        log.info("📢 Sending arbitrage notification: {} ({}% profit)", signal.getEventTitle(), signal.getProfitPercent());
 
         String message = formatArbitrageMessage(signal);
 
         for (Long chatId : properties.getChatIds()) {
             sendMessage(chatId, message);
         }
-
-        if (properties.isAutoConfirmEnabled()) {
-            log.info("Auto-confirm enabled, placing bets for signal {}", signal.getId());
-        }
     }
 
     private String formatArbitrageMessage(ArbitrageSignal signal) {
         return String.format(
                 """
-                🔍 *АРБИТРАЖ НАЙДЕН!* %n%n
-                📊 Событие: %s%n
-                💰 Профит: *%.2f%%*%n
-                ✅ YES: %.4f%n
-                ❌ NO: %.4f%n
+                🔍 *АРБИТРАЖ НАЙДЕН!*
+                
+                📊 *Событие:* %s
+                💰 *Профит:* %.2f%%
+                
+                ───────────────────
+                📈 *Купить YES (ДА)*
+                💵 Цена: *%.4f*
+                🔗 [Открыть сделку YES](%s)
+                
+                📉 *Купить NO (НЕТ)*
+                💵 Цена: *%.4f*
+                🔗 [Открыть сделку NO](%s)
+                ───────────────────
+                
+                ⚡️ *Действуйте быстро!*
+                Сигнал действителен 5 минут
                 """,
                 signal.getEventTitle(),
                 signal.getProfitPercent(),
                 signal.getPriceYes(),
-                signal.getPriceNo()
+                signal.getUrlYes(),
+                signal.getPriceNo(),
+                signal.getUrlNo()
         );
     }
 }
