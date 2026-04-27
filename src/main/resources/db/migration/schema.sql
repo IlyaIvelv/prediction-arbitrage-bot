@@ -1,6 +1,9 @@
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Markets registry
 CREATE TABLE IF NOT EXISTS markets (
-                                       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                                       id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     platform_id VARCHAR(32) NOT NULL,
     external_id VARCHAR(128) NOT NULL,
     title TEXT NOT NULL,
@@ -34,16 +37,21 @@ CREATE TABLE IF NOT EXISTS arbitrage_pairs (
     UNIQUE(market_a_id, market_b_id)
     );
 
--- Signals found by scanner
+-- Signals found by scanner (основная таблица по ТЗ)
 CREATE TABLE IF NOT EXISTS arbitrage_signals (
                                                  id BIGSERIAL PRIMARY KEY,
                                                  pair_id BIGINT REFERENCES arbitrage_pairs(id) ON DELETE CASCADE,
     spread_percent DECIMAL(6,4) NOT NULL,
     expected_profit DECIMAL(8,4) NOT NULL,
     status VARCHAR(16) DEFAULT 'NEW',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,          -- когда ждём подтверждения
+    disappeared_at TIMESTAMPTZ,      -- когда вилка пропала
+    confirmed_by_chat_id BIGINT,     -- кто нажал YES
+    placed_at TIMESTAMPTZ            -- когда ставки размещены
     );
 CREATE INDEX idx_signals_status_time ON arbitrage_signals(status, created_at DESC);
+CREATE INDEX idx_signals_pending ON arbitrage_signals(status, expires_at) WHERE status IN ('SENT', 'CONFIRMED');
 
 -- Orders (real or dry-run)
 CREATE TABLE IF NOT EXISTS orders (
@@ -70,3 +78,20 @@ CREATE TABLE IF NOT EXISTS positions (
     is_open BOOLEAN DEFAULT TRUE,
     UNIQUE(market_id, side)
     );
+
+-- Telegram notifications log (аудит ответов)
+CREATE TABLE IF NOT EXISTS telegram_notifications (
+                                                      id BIGSERIAL PRIMARY KEY,
+                                                      signal_id BIGINT REFERENCES arbitrage_signals(id) ON DELETE CASCADE,
+    chat_id BIGINT NOT NULL,
+    message_id BIGINT,
+    sent_at TIMESTAMPTZ DEFAULT NOW(),
+    responded_at TIMESTAMPTZ,
+    response_text VARCHAR(32)
+    );
+CREATE INDEX idx_tg_notifications_signal ON telegram_notifications(signal_id);
+
+-- Ограничение на статусы сигналов (опционально, но рекомендуется)
+ALTER TABLE arbitrage_signals
+    ADD CONSTRAINT chk_signal_status
+        CHECK (status IN ('NEW','SENT','CONFIRMED','PLACED','EXPIRED','FAILED'));

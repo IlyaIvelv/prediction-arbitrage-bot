@@ -5,16 +5,20 @@ spring:
   application:
     name: prearbbot
   datasource:
-    # ИЗМЕНЕНО: имя БД
     url: jdbc:postgresql://localhost:5432/prearbbot
     username: postgres
     password: postgres
     driver-class-name: org.postgresql.Driver
   jooq:
     sql-dialect: postgresql
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
 
 arbitrage:
   dry-run: true
+  scan-interval: 30s
   trading:
     bet-amount: 10.0
     min-profit-percent: 3.0
@@ -22,17 +26,38 @@ arbitrage:
   matcher:
     confidence-threshold: 0.85
     cache-embeddings: true
+  auto-trade:
+    enabled: false
+    default-account: polymarket
   platforms:
     - id: polymarket
       enabled: true
       api-url: https://gamma-api.polymarket.com
+      wallet-address: ${POLY_WALLET:}
+      private-key: ${POLY_KEY:}
     - id: kalshi
       enabled: true
       api-url: https://api.kalshi.com
+      api-key: ${KALSHI_KEY:}
+      api-secret: ${KALSHI_SECRET:}
+
+telegram:
+  token: ${TG_BOT_TOKEN}
+  chat-ids:
+    - ${TG_CHAT_ID_1}
+    - ${TG_CHAT_ID_2}
+  auto-confirm-enabled: false
+  confirmation-timeout-sec: 30
 
 logging:
   level:
-    # ИЗМЕНЕНО: пакет логирования
     com.prearbbot: DEBUG
     org.jooq: INFO
     org.springframework.web.reactive: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/prearbbot.log
+    max-size: 10MB
+    max-history: 7
