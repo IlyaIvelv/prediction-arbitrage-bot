@@ -26,6 +26,28 @@ CREATE TABLE IF NOT EXISTS market_prices (
     );
 CREATE INDEX idx_prices_market_time ON market_prices(market_id, recorded_at DESC);
 
+-- Таблица платформ
+CREATE TABLE IF NOT EXISTS platforms (
+                                         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL UNIQUE,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+-- Таблица исходов (outcomes)
+CREATE TABLE IF NOT EXISTS outcomes (
+                                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    market_id UUID NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+    label VARCHAR(255) NOT NULL,
+    price DECIMAL(10,4) NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(market_id, label)
+    );
+
+-- Индексы для производительности
+CREATE INDEX IF NOT EXISTS idx_outcomes_market_id ON outcomes(market_id);
+CREATE INDEX IF NOT EXISTS idx_markets_platform_id ON markets(platform_id);
+
 -- AI-matched pairs (исключаем из генерации, но таблица нужна)
 CREATE TABLE IF NOT EXISTS arbitrage_pairs (
                                                id BIGSERIAL PRIMARY KEY,

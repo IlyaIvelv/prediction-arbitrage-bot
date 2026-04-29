@@ -81,6 +81,12 @@
             <optional>true</optional>
         </dependency>
 
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <version>5.4.1</version>
+        </dependency>
+
         <!-- ========== Test Containers (интеграционные тесты) ========== -->
         <dependency>
             <groupId>org.testcontainers</groupId>
@@ -116,44 +122,48 @@
             </plugin>
 
             <!-- jOOQ Codegen (генерация классов из БД) -->
-<!--            <plugin>-->
-<!--                <groupId>org.jooq</groupId>-->
-<!--                <artifactId>jooq-codegen-maven</artifactId>-->
-<!--                <version>${jooq.version}</version>-->
-<!--                <executions>-->
-<!--                    <execution>-->
-<!--                        <id>jooq-codegen</id>-->
-<!--                        <phase>generate-sources</phase>-->
-<!--                        <goals>-->
-<!--                            <goal>generate</goal>-->
-<!--                        </goals>-->
-<!--                    </execution>-->
-<!--                </executions>-->
-<!--                <configuration>-->
-<!--                    <jdbc>-->
-<!--                        <driver>org.postgresql.Driver</driver>-->
-<!--                        <url>jdbc:postgresql://localhost:5432/prearbbot</url>-->
-<!--                        <user>postgres</user>-->
-<!--                        <password>postgres</password>-->
-<!--                    </jdbc>-->
-<!--                    <generator>-->
-<!--                        <name>org.jooq.codegen.DefaultGenerator</name>-->
-<!--                        <database>-->
-<!--                            <name>org.jooq.meta.postgres.PostgresDatabase</name>-->
-<!--                            <includes>.*</includes>-->
-<!--                            &lt;!&ndash; Исключаем только таблицу с багом внешних ключей &ndash;&gt;-->
-<!--                            <excludes>arbitrage_pairs</excludes>-->
-<!--                            <inputSchema>public</inputSchema>-->
-<!--                        </database>-->
-<!--                        <target>-->
-<!--                            <packageName>com.prearbbot.generated</packageName>-->
-<!--                            <directory>target/generated-sources/jooq</directory>-->
-<!--                        </target>-->
-<!--                        &lt;!&ndash; ОТКЛЮЧАЕМ генерацию метаданных внешних ключей (баг PostgreSQL 15 + jOOQ 3.19.8) &ndash;&gt;-->
-<!--                        <outputForeignKeys>false</outputForeignKeys>-->
-<!--                    </generator>-->
-<!--                </configuration>-->
-<!--            </plugin>-->
+            <plugin>
+                <groupId>org.jooq</groupId>
+                <artifactId>jooq-codegen-maven</artifactId>
+                <version>${jooq.version}</version>
+                <executions>
+                    <execution>
+                        <id>jooq-codegen</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <jdbc>
+                        <driver>org.postgresql.Driver</driver>
+                        <url>jdbc:postgresql://localhost:5432/prearbbot</url>
+                        <user>postgres</user>
+                        <password>postgres</password>
+                    </jdbc>
+                    <generator>
+                        <database>
+                            <name>org.jooq.meta.postgres.PostgresDatabase</name>
+                            <includes>.*</includes>
+                            <excludes>arbitrage_pairs</excludes>
+                            <inputSchema>public</inputSchema>
+                            <!-- ✅ ОТКЛЮЧАЕМ генерацию внешних ключей (правильное место и имя) -->
+                            <includeForeignKeys>false</includeForeignKeys>
+                        </database>
+                        <generate>
+                            <javaTimeTypes>true</javaTimeTypes>
+                            <pojos>false</pojos>
+                            <daos>false</daos>
+                            <fluentSetters>true</fluentSetters>
+                        </generate>
+                        <target>
+                            <packageName>com.prearbbot.generated</packageName>
+                            <directory>target/generated-sources/jooq</directory>
+                        </target>
+                    </generator>
+                </configuration>
+            </plugin>
 
         </plugins>
     </build>

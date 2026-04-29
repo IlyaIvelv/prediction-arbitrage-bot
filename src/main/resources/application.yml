@@ -1,7 +1,15 @@
 server:
   port: 8080
 
+sync:
+  polymarket:
+    interval: 10000
+
 spring:
+  web:
+    resources:
+      cache:
+        period: 0
   main:
     allow-circular-references: false
   codec:
@@ -52,8 +60,11 @@ telegram:
   auto-confirm-enabled: false
   confirmation-timeout-sec: 30
 
+# ✅ ЕДИНСТВЕННЫЙ блок logging — в конце файла
 logging:
   level:
+    # Скрываем сырые байты ответов (оставляем только ошибки)
+    org.apache.hc.client5.http.wire: WARN
     com.prearbbot: DEBUG
     org.jooq: INFO
     org.springframework.web.reactive: INFO
