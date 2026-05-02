@@ -125,3 +125,14 @@ CREATE INDEX idx_tg_notifications_signal ON telegram_notifications(signal_id);
 ALTER TABLE arbitrage_signals
     ADD CONSTRAINT chk_signal_status
         CHECK (status IN ('NEW','SENT','CONFIRMED','PLACED','EXPIRED','FAILED'));
+
+
+-- В конце V1__init.sql (теперь V1__init.sql)
+CREATE TABLE IF NOT EXISTS matched_markets (
+                                               id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    polymarket_market_id UUID NOT NULL REFERENCES markets(id),
+    kalshi_market_id UUID NOT NULL REFERENCES markets(id),
+    confidence NUMERIC(3,2) NOT NULL,
+    matched_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(polymarket_market_id, kalshi_market_id)
+    );
