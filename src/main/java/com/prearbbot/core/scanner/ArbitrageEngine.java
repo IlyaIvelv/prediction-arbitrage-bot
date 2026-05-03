@@ -7,7 +7,7 @@ import com.prearbbot.core.parser.KalshiParser;
 import com.prearbbot.core.parser.PolymarketParser;
 import com.prearbbot.core.repository.ArbitrageSignalRepository;
 import com.prearbbot.service.ScanningStatusService;
-import com.prearbbot.service.TelegramBotService;
+import com.prearbbot.service.TelegramNotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.event.EventListener;
@@ -25,7 +25,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ArbitrageEngine {
 
-    private final TelegramBotService telegramBotService;
+    private final TelegramNotificationService telegramBotService;
     private final ScanningStatusService statusService;
     private final ArbitrageSignalRepository repository;
     private final ArbitrageProperties properties;
@@ -153,7 +153,8 @@ public class ArbitrageEngine {
 
         try {
             repository.save(arb);
-            telegramBotService.notifyArbitrageFound(arb);
+            // Временно отключено, используем новый метод
+            // telegramBotService.sendArbitrageSignal(...);
         } catch (Exception e) {
             log.error("❌ Ошибка при сохранении", e);
         }

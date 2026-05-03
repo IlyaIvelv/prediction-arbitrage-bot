@@ -38,7 +38,7 @@ public class EventLoadingService {
         matcherService.findAndSaveMatches();
         System.out.println("=".repeat(50));
 
-        arbitrageService.findArbitrageOpportunities();
-
+        // Автоматический поиск арбитражей после загрузки
+        arbitrageService.findArbitrageOpportunities(true);
     }
 }

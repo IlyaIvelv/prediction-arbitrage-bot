@@ -8,9 +8,8 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class ArbitrageCalculatorService {
@@ -21,16 +20,43 @@ public class ArbitrageCalculatorService {
     @Autowired
     private RawEventRepository rawEventRepository;
 
-    public void findArbitrageOpportunities() {
-        System.out.println("\n💰 ПОИСК АРБИТРАЖНЫХ ВОЗМОЖНОСТЕЙ...");
+    @Autowired
+    private TelegramNotificationService telegramService;
 
-        // Получаем все найденные связки из event_matches
+    private int opportunitiesFound = 0;
+
+    // Класс для хранения арбитражной возможности
+    private static class ArbitrageOpportunity {
+        String buyExchange;
+        String buyOutcome;
+        double buyPrice;
+        String sellExchange;
+        String sellOutcome;
+        double sellPrice;
+        double profitPercent;
+        String eventTitle;
+
+        // Для уникальности (чтобы не дублировать одинаковые пары)
+        String getUniqueKey() {
+            return buyExchange + buyOutcome + sellExchange + sellOutcome + eventTitle;
+        }
+    }
+
+    public void findArbitrageOpportunities() {
+        findArbitrageOpportunities(false);
+    }
+
+    public void findArbitrageOpportunities(boolean sendToTelegram) {
+        System.out.println("\n💰 ПОИСК АРБИТРАЖНЫХ ВОЗМОЖНОСТЕЙ...");
+        opportunitiesFound = 0;
+
+        // Собираем все возможности в список
+        List<ArbitrageOpportunity> allOpportunities = new ArrayList<>();
+
         String sql = "SELECT id, event_id_1, event_id_2 FROM event_matches";
 
         List<Map<String, Object>> matches = jdbcTemplate.queryForList(sql);
         System.out.println("📊 Проверяю " + matches.size() + " связок на арбитраж...");
-
-        int opportunitiesFound = 0;
 
         for (Map<String, Object> match : matches) {
             Long matchId = ((Number) match.get("id")).longValue();
@@ -45,29 +71,67 @@ public class ArbitrageCalculatorService {
             RawEvent geminiEvent = geminiOpt.get();
             RawEvent polyEvent = polyOpt.get();
 
-            // Проверяем 4 комбинации:
-            // 1. Купить YES на Gemini, купить NO на Polymarket
-            checkCombination(matchId, "gemini", "YES", geminiEvent.getYesPrice(),
-                    "polymarket", "NO", polyEvent.getNoPrice());
+            String eventTitle = geminiEvent.getTitle();
+            if (eventTitle.length() > 50) {
+                eventTitle = eventTitle.substring(0, 47) + "...";
+            }
 
-            // 2. Купить NO на Gemini, купить YES на Polymarket
-            checkCombination(matchId, "gemini", "NO", geminiEvent.getNoPrice(),
-                    "polymarket", "YES", polyEvent.getYesPrice());
+            // Проверяем 4 комбинации и добавляем в список
+            addOpportunity(allOpportunities, matchId, "gemini", "YES", geminiEvent.getYesPrice(),
+                    "polymarket", "NO", polyEvent.getNoPrice(), eventTitle);
 
-            // 3. Купить YES на Polymarket, купить NO на Gemini
-            checkCombination(matchId, "polymarket", "YES", polyEvent.getYesPrice(),
-                    "gemini", "NO", geminiEvent.getNoPrice());
+            addOpportunity(allOpportunities, matchId, "gemini", "NO", geminiEvent.getNoPrice(),
+                    "polymarket", "YES", polyEvent.getYesPrice(), eventTitle);
 
-            // 4. Купить NO на Polymarket, купить YES на Gemini
-            checkCombination(matchId, "polymarket", "NO", polyEvent.getNoPrice(),
-                    "gemini", "YES", geminiEvent.getYesPrice());
+            addOpportunity(allOpportunities, matchId, "polymarket", "YES", polyEvent.getYesPrice(),
+                    "gemini", "NO", geminiEvent.getNoPrice(), eventTitle);
+
+            addOpportunity(allOpportunities, matchId, "polymarket", "NO", polyEvent.getNoPrice(),
+                    "gemini", "YES", geminiEvent.getYesPrice(), eventTitle);
         }
 
-        System.out.println("🎯 Найдено арбитражных возможностей: " + opportunitiesFound);
+        // Удаляем дубликаты по уникальному ключу
+        Map<String, ArbitrageOpportunity> uniqueOpportunities = new LinkedHashMap<>();
+        for (ArbitrageOpportunity opp : allOpportunities) {
+            String key = opp.getUniqueKey();
+            if (!uniqueOpportunities.containsKey(key) ||
+                    uniqueOpportunities.get(key).profitPercent < opp.profitPercent) {
+                uniqueOpportunities.put(key, opp);
+            }
+        }
+
+        // Сортируем по убыванию прибыли
+        List<ArbitrageOpportunity> sortedOpportunities = new ArrayList<>(uniqueOpportunities.values());
+        sortedOpportunities.sort((a, b) -> Double.compare(b.profitPercent, a.profitPercent));
+
+        opportunitiesFound = sortedOpportunities.size();
+
+        System.out.println("🎯 Найдено уникальных арбитражных возможностей: " + opportunitiesFound);
+
+        // Выводим в консоль в отсортированном порядке
+        if (!sortedOpportunities.isEmpty()) {
+            System.out.println("\n📊 ОТСОРТИРОВАННЫЕ ПО ПРИБЫЛИ АРБИТРАЖИ:");
+            System.out.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            for (int i = 0; i < Math.min(20, sortedOpportunities.size()); i++) {
+                ArbitrageOpportunity opp = sortedOpportunities.get(i);
+                System.out.printf("%d. 💰 Прибыль: %.2f%%%n", i + 1, opp.profitPercent);
+                System.out.printf("   Купить %s на %s по цене %.4f%n", opp.buyOutcome, opp.buyExchange, opp.buyPrice);
+                System.out.printf("   Купить %s на %s по цене %.4f%n", opp.sellOutcome, opp.sellExchange, opp.sellPrice);
+                System.out.printf("   Событие: %s%n", opp.eventTitle);
+                System.out.println("   ─────────────────────────────────────────────");
+            }
+        }
+
+        // Отправляем в Telegram, если нужно
+        if (sendToTelegram && telegramService != null && !sortedOpportunities.isEmpty()) {
+            sendCombinedTelegramMessage(sortedOpportunities);
+        }
     }
 
-    private void checkCombination(Long matchId, String buyExchange, String buyOutcome, BigDecimal buyPrice,
-                                  String sellExchange, String sellOutcome, BigDecimal sellPrice) {
+    private void addOpportunity(List<ArbitrageOpportunity> list, Long matchId,
+                                String buyExchange, String buyOutcome, BigDecimal buyPrice,
+                                String sellExchange, String sellOutcome, BigDecimal sellPrice,
+                                String eventTitle) {
         if (buyPrice == null || sellPrice == null) return;
 
         BigDecimal total = buyPrice.add(sellPrice);
@@ -77,7 +141,6 @@ public class ArbitrageCalculatorService {
             BigDecimal profit = target.subtract(total);
             BigDecimal profitPercent = profit.multiply(new BigDecimal("100"));
 
-            // Сохраняем возможность
             String sql = """
                 INSERT INTO arbitrage_opportunities 
                 (event_match_id, buy_exchange, buy_outcome, buy_price, sell_exchange, sell_outcome, sell_price, profit_percent)
@@ -87,17 +150,52 @@ public class ArbitrageCalculatorService {
             try {
                 jdbcTemplate.update(sql, matchId, buyExchange, buyOutcome, buyPrice,
                         sellExchange, sellOutcome, sellPrice, profitPercent);
-                opportunitiesFound++;
-                System.out.printf("   💰 АРБИТРАЖ! Прибыль: %.2f%%\n", profitPercent);
-                System.out.printf("      Купить %s на %s по цене %.4f\n", buyOutcome, buyExchange, buyPrice);
-                System.out.printf("      Купить %s на %s по цене %.4f\n", sellOutcome, sellExchange, sellPrice);
-                System.out.printf("      Сумма: %.4f + %.4f = %.4f (меньше 1.0)\n", buyPrice, sellPrice, total);
+
+                ArbitrageOpportunity opp = new ArbitrageOpportunity();
+                opp.buyExchange = buyExchange;
+                opp.buyOutcome = buyOutcome;
+                opp.buyPrice = buyPrice.doubleValue();
+                opp.sellExchange = sellExchange;
+                opp.sellOutcome = sellOutcome;
+                opp.sellPrice = sellPrice.doubleValue();
+                opp.profitPercent = profitPercent.doubleValue();
+                opp.eventTitle = eventTitle;
+                list.add(opp);
+
             } catch (Exception e) {
                 // Возможно, уже есть такой арбитраж
             }
         }
     }
 
-    // Добавим счетчик найденных возможностей
-    private int opportunitiesFound = 0;
+    private void sendCombinedTelegramMessage(List<ArbitrageOpportunity> opportunities) {
+        if (opportunities.isEmpty()) return;
+
+        StringBuilder message = new StringBuilder();
+        message.append("📊 *АРБИТРАЖНЫЕ ВОЗМОЖНОСТИ* 📊\n");
+        message.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        message.append("Отсортировано по убыванию прибыли\n");
+        message.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n");
+
+        int count = 0;
+        for (ArbitrageOpportunity opp : opportunities) {
+            if (count >= 15) {
+                message.append("\n⋯ и ещё ").append(opportunities.size() - 15).append(" возможностей ⋯\n");
+                break;
+            }
+            count++;
+
+            String emoji = opp.profitPercent >= 3 ? "🟢" : (opp.profitPercent >= 1 ? "🟡" : "🔵");
+            message.append(String.format("%s *%.2f%%* %s\n", emoji, opp.profitPercent, emoji));
+            message.append("└ Купить `").append(opp.buyOutcome).append("` на *").append(opp.buyExchange).append("* по `").append(String.format("%.4f", opp.buyPrice)).append("`\n");
+            message.append("└ Купить `").append(opp.sellOutcome).append("` на *").append(opp.sellExchange).append("* по `").append(String.format("%.4f", opp.sellPrice)).append("`\n");
+            message.append("└ *Событие:* ").append(opp.eventTitle).append("\n\n");
+        }
+
+        message.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+        message.append("🔔 *Авто-сканирование каждые 30 сек*\n");
+        message.append("⚡ Для изменения порога: /proc X");
+
+        telegramService.sendMessage(message.toString());
+    }
 }

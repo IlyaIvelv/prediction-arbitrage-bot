@@ -26,7 +26,7 @@ spring:
       cache:
         period: 0
   main:
-    allow-circular-references: false
+    allow-circular-references: true
   codec:
     max-in-memory-size: 10MB
   application:
