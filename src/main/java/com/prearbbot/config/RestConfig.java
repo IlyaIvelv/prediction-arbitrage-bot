@@ -2,27 +2,47 @@ package com.prearbbot.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestTemplate;
 
-import java.time.Duration;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.web.client.RestTemplate;
+
+import java.net.InetSocketAddress;
+import java.net.Proxy;
 
 @Configuration
 public class RestConfig {
 
+    @Value("${proxy.host:}")
+    private String proxyHost;
+
+    @Value("${proxy.port:0}")
+    private int proxyPort;
+
+    // Твой основной RestTemplate (без прокси)
     @Bean
-    public RestClient polymarketRestClient() {
-        var factory = new HttpComponentsClientHttpRequestFactory();
+    public RestTemplate restTemplate() {
+        return new RestTemplate();
+    }
 
-        // Таймауты в миллисекундах
-        factory.setConnectTimeout((int) Duration.ofSeconds(30).toMillis());    // подключение
-        factory.setReadTimeout((int) Duration.ofSeconds(120).toMillis());      // чтение ответа
-        factory.setConnectionRequestTimeout((int) Duration.ofSeconds(30).toMillis()); // получение соединения из пула
+    // Новый RestTemplate для Kalshi (через прокси)
+    @Bean(name = "kalshiRestTemplate")
+    public RestTemplate kalshiRestTemplate() {
+        if (proxyHost != null && !proxyHost.isEmpty() && proxyPort > 0) {
+            SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));
+            factory.setProxy(proxy);
 
-        return RestClient.builder()
-                .baseUrl("https://gamma-api.polymarket.com")
-                .defaultHeader("Accept", "application/json")
-                .requestFactory(factory)
-                .build();
+            // Важно: таймауты, чтобы запросы не висели вечно
+            factory.setConnectTimeout(5000);
+            factory.setReadTimeout(10000);
+            return new RestTemplate(factory);
+        }
+        // Если прокси не задан, возвращаем обычный
+        return new RestTemplate();
     }
 }

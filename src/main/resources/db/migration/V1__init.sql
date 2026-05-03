@@ -136,3 +136,23 @@ CREATE TABLE IF NOT EXISTS matched_markets (
     matched_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(polymarket_market_id, kalshi_market_id)
     );
+
+-- 1. Сырые события с каждой биржи
+CREATE TABLE raw_events (
+                            id SERIAL PRIMARY KEY,
+                            exchange VARCHAR(50),        -- 'polymarket' or 'kashi'
+                            external_id VARCHAR(255),    -- ID события на бирже
+                            title TEXT,                  -- 'Manchester United to win?'
+                            outcome_yes_price DECIMAL(10,3),
+                            outcome_no_price DECIMAL(10,3),
+                            fetched_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 2. Таблица связей (матчинга) - только то, что ты сказал
+CREATE TABLE event_matches (
+                               id SERIAL PRIMARY KEY,
+                               raw_event_id_1 INT REFERENCES raw_events(id), -- событие с биржи А
+                               raw_event_id_2 INT REFERENCES raw_events(id), -- событие с биржи Б
+                               similarity_score DECIMAL(5,2),  -- на всякий случай, 0-100
+                               matched_at TIMESTAMP DEFAULT NOW()
+);

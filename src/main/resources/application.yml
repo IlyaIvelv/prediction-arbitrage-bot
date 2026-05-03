@@ -5,6 +5,21 @@ sync:
   polymarket:
     interval: 10000
 
+betfair:
+  api:
+    app-key: ТВОЙ_APP_KEY
+    username: ТВОЙ_BETFAIR_ЛОГИН
+    password: ТВОЙ_BETFAIR_ПАРОЛЬ
+    base-url: https://api.betfair.com/exchange/betting/rest/v1.0
+
+sportmonks:
+  api:
+    token: Njm89YihqT5v0uQRBgmZJoqjRS4lUgvahGpw5fBNGnlSP8lL2t82Txg1SNCR
+
+limitless:
+  api:
+    key:
+
 spring:
   web:
     resources:
